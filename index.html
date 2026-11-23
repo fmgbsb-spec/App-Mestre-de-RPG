@@ -360,6 +360,8 @@ table.tabela th { font-size: 13px; color: var(--suave); font-weight: 400; }
   .numeros.quatro { grid-template-columns: repeat(4, 1fr); }
   /* seção Monstros: lista à esquerda, ficha à direita */
   .corpo.consulta > .folha { max-width: none; margin: 0; border-right: 1px solid var(--linha); min-height: 100%; }
+  /* v0.2.1: a ficha ou a regra fica presa na tela ao lado da lista, com rolagem própria (a lista não sai do lugar) */
+  .corpo.consulta > .detalhe-tablet { position: sticky; top: 0; min-height: 0; max-height: calc(100vh - 60px); overflow-y: auto; }
 }
 /* notebook (A11, escolha do Francisco em 2026-11-23): lista até 560 px, ficha larga com o bloco em duas colunas */
 @media (min-width: 1200px) {
@@ -423,7 +425,7 @@ table.tabela th { font-size: 13px; color: var(--suave); font-weight: 400; }
 // A versão é gravada pelo build.ps1, a partir de VERSAO.txt (e a da Ficha D&D copiada, em M.versaoFicha).
 (function (M) {
   'use strict';
-  M.versao = '0.2.0'; M.versaoFicha = '0.20.0';
+  M.versao = '0.2.1'; M.versaoFicha = '0.20.0';
 })(window.Mestre = window.Mestre || {});
 </script>
 <script>
@@ -15233,14 +15235,18 @@ table.tabela th { font-size: 13px; color: var(--suave); font-weight: 400; }
     return ui.faixa.filter(function (it) { return V.pendente(it) && e.combate && C.porId(e, V.alvoDoAviso(it.a).id); });
   }
   function desenhar() {
-    var y = window.scrollY;
+    var y = window.scrollY, det = document.querySelector('.detalhe-tablet'), yDet = det ? det.scrollTop : 0;
     ui.faixa = ui.faixa.filter(function (it) { return !V.pendente(it) || pendentes().indexOf(it) >= 0; });
     S.gravarFaixa(pendentes().map(function (it) { return { a: it.a, n: it.n, modo: it.modo || null }; }));
     raiz.innerHTML = V.html(e, ui);
     window.scrollTo(0, y);
+    // v0.2.1: a coluna presa ao lado (Monstros, Regras) fica onde estava ao rolar ou digitar; outra regra abre do começo
+    det = document.querySelector('.detalhe-tablet');
+    if (det && !detalheDoComeco) det.scrollTop = yDet;
+    detalheDoComeco = false;
     if (depoisDeDesenhar) { var fd = depoisDeDesenhar; depoisDeDesenhar = null; fd(); }
   }
-  var depoisDeDesenhar = null;   // v0.2.0: rolagem da aba Regras, depois do redesenho
+  var depoisDeDesenhar = null, detalheDoComeco = false;   // rolagem da aba Regras, depois do redesenho
   function limparEmLinha() { ui.dig = null; ui.erroDig = ''; ui.editarPv = null; ui.concentrar = null; }
   function avisos(lista) { return (lista || []).map(function (a) { return { a: a, n: e.pilha.length }; }); }
   // A faixa troca a cada ação; os pedidos que esperam resposta ficam em cima (C4 D2)
@@ -15441,16 +15447,16 @@ table.tabela th { font-size: 13px; color: var(--suave); font-weight: 400; }
     'fechar-resumo': function () { ui.sobre = null; },
     'por-monstros': function () { ui.sobre = 'busca'; ui.busca = ''; ui.digInimigo = null; window.scrollTo(0, 0); },
     // aba Monstros (A13; N5 só consulta): a ficha aberta fica até trocar ou voltar
-    'mon-abrir': function (el) { ui.monstro = el.dataset.ref; if (!ui.tablet) window.scrollTo(0, 0); },
+    'mon-abrir': function (el) { ui.monstro = el.dataset.ref; if (ui.tablet) detalheDoComeco = true; else window.scrollTo(0, 0); },
     'mon-voltar': function () { ui.monstro = null; },
     // aba Regras (v0.2.0)
-    // Celular: a regra abre no alto e o Voltar devolve a lista onde estava; tablet: a coluna da regra aparece inteira
+    // Celular: a regra abre no alto e o Voltar devolve a lista onde estava; tablet: a lista fica parada e a regra aparece
+    // na coluna presa ao lado (v0.2.1, base.css), do começo
     'regra-abrir': function (el) {
       var lista = !ui.regra;
       ui.regra = M.consulta.idFinal(el.dataset.id);
-      if (ui.tablet) {
-        depoisDeDesenhar = function () { var d = document.querySelector('.detalhe-tablet'); if (d && d.getBoundingClientRect().top < 0) d.scrollIntoView(); };
-      } else {
+      if (ui.tablet) detalheDoComeco = true;
+      else {
         if (lista) ui.regRolagem = window.scrollY;
         window.scrollTo(0, 0);
       }
