@@ -219,6 +219,11 @@ table.tabela th { font-size: 13px; color: var(--suave); font-weight: 400; }
 .faixa li { padding: 6px 12px; border-bottom: 1px solid var(--linha); background: var(--cartao); }
 .faixa li p { margin: 0; }
 .faixa .botoes { margin: 6px 0 2px; }
+/* v0.3.2: × no canto do aviso (tira na hora); alvo de 44 px */
+.faixa li.com-fechar { position: relative; padding-right: 48px; }
+.fechar-aviso { position: absolute; top: 0; right: 0; width: 44px; height: 44px; padding: 0; border: 0; background: none;
+  color: var(--suave); font-size: 22px; line-height: 1; cursor: pointer; }
+.fechar-aviso:hover { color: var(--tinta); }
 
 /* Iniciativa (preparo e quem falta no combate) */
 .ini-lista { list-style: none; margin: 0; padding: 0; }
@@ -440,7 +445,7 @@ table.tabela th { font-size: 13px; color: var(--suave); font-weight: 400; }
 // A versão é gravada pelo build.ps1, a partir de VERSAO.txt (e a da Ficha D&D copiada, em M.versaoFicha).
 (function (M) {
   'use strict';
-  M.versao = '0.3.0'; M.versaoFicha = '0.21.0';
+  M.versao = '0.3.2'; M.versaoFicha = '0.21.0';
 })(window.Mestre = window.Mestre || {});
 </script>
 <script>
@@ -12853,6 +12858,15 @@ table.tabela th { font-size: 13px; color: var(--suave); font-weight: 400; }
       if (j.pv !== 0) j.morte = { s: 0, f: 0 };   // H2: contagens só valem com 0 PV
     });
   };
+  // v0.3.1 (pedido do Francisco, 2026-11-25): quem veio da ficha (arquivo ou mesa, ou a linha que a mesa ligou pelo nome)
+  // só muda CA, PV máximo e PV atual no Editar; nome, nível, Iniciativa e Percepção Passiva vêm da ficha. Digitado à mão:
+  // todos os campos. linha, sentidos, idiomas, salvaguardas e defesas ficam como estão (A10).
+  G.soCaEPv = function (j) { return !!j && (j.origem === 'arquivo' || !!j.uid); };
+  G.dadosDoEditar = function (j, d) {
+    var x = G.soCaEPv(j) ? j : d;
+    return { origem: j.origem, nome: x.nome, nivel: x.nivel, ca: d.ca, pvMax: d.pvMax, iniciativa: x.iniciativa, percepcao: x.percepcao,
+      salvaguardas: j.salvaguardas, defesas: j.defesas, linha: j.linha, sentidos: j.sentidos, idiomas: j.idiomas };
+  };
   G.tirar = function (e, id) {
     var j = exigir(e, id);
     return E.acao(e, { tipo: 'grupoTirar', id: id, nome: j.nome }, function () {
@@ -15412,6 +15426,7 @@ table.tabela th { font-size: 13px; color: var(--suave); font-weight: 400; }
     return '<b>' + r.total + '</b>' + (meio ? ' <small>(' + T.esc(meio) + ')</small>' : '');
   };
   T.erroD20 = 'O d20 vai de 1 a 20.';
+  T.fecharAviso = 'Fechar aviso';   // v0.3.2: nome do × da faixa (leitor de tela; OK do Francisco, 2026-11-25)
   T.erroSoma = function (expr, faixa) { return 'A soma de ' + expr + ' vai de ' + faixa.min + ' a ' + faixa.max + '.'; };
   T.meioDoDano = meioDoDano;
 
@@ -15813,7 +15828,11 @@ table.tabela th { font-size: 13px; color: var(--suave); font-weight: 400; }
       var j = ui.guardar ? i - 1 : i;
       var t = item.feito || item.texto || (item.a ? T.aviso(e, item.a) : '');
       if (!t) return '';
-      return '<li><p>' + esc(t) + '</p>' + (j >= 0 ? botoesDoAviso(e, item, j) : '') + '</li>';
+      // v0.3.2 (Francisco, 2026-11-25): × no canto tira o aviso na hora; menos os pedidos que esperam resposta (têm
+      // Ignorar) e o aviso de falha ao guardar
+      var x = j >= 0 && !V.pendente(item);
+      return '<li' + (x ? ' class="com-fechar"' : '') + '><p>' + esc(t) + '</p>' + (j >= 0 ? botoesDoAviso(e, item, j) : '') +
+        (x ? '<button type="button" class="fechar-aviso" data-a="f-fechar" data-i="' + j + '" aria-label="' + esc(T.fecharAviso) + '">×</button>' : '') + '</li>';
     }).join('');
     return html ? '<ul class="faixa" aria-live="polite">' + html + '</ul>' : '';
   }
@@ -15824,16 +15843,19 @@ table.tabela th { font-size: 13px; color: var(--suave); font-weight: 400; }
       (r ? '<p>Último combate: ' + esc((r.nome ? r.nome + ', ' : '') + r.rodadas + (r.rodadas === 1 ? ' rodada' : ' rodadas')) + ' ' +
         botao('ver-resumo', 'Ver resumo', '', 'leve') + '</p>' : '') + '</section>';
   }
+  // v0.3.1 (Francisco, 2026-11-25): Editar com "Confirmar" (Digitar personagem novo segue "Pôr"); da ficha ou da mesa, só
+  // CA, PV máximo e PV atual (G.soCaEPv)
   function formJogador(j, erro) {
-    var novo = !j;
+    var novo = !j, so = !novo && G.soCaEPv(j);
     j = j || {};
-    return '<div class="campos" data-form' + (novo ? '' : dataId(j.id)) + '>' + campo('Nome', 'type="text" data-f="nome" autocomplete="off"', j.nome) +
-      campo('Nível', 'type="number" inputmode="numeric" data-f="nivel" min="1" max="20"', j.nivel) +   // v0.2.0 D1
+    return '<div class="campos" data-form' + (novo ? '' : dataId(j.id)) + '>' +
+      (so ? '' : campo('Nome', 'type="text" data-f="nome" autocomplete="off"', j.nome) +
+        campo('Nível', 'type="number" inputmode="numeric" data-f="nivel" min="1" max="20"', j.nivel)) +   // v0.2.0 D1
       campo('CA', 'type="number" inputmode="numeric" data-f="ca"', j.ca) + campo('PV máximo', 'type="number" inputmode="numeric" data-f="pvMax"', j.pvMax) +
       (novo ? '' : campo('PV atual', 'type="number" inputmode="numeric" data-f="pv"', j.pv)) +
-      campo('Iniciativa', 'type="number" inputmode="numeric" data-f="iniciativa"', novo ? '' : j.iniciativa) +
-      campo('Percepção Passiva', 'type="number" inputmode="numeric" data-f="percepcao"', j.percepcao) +
-      botao('g-salvar', 'Pôr', novo ? '' : dataId(j.id)) + botao('g-cancelar', 'Cancelar', '', 'leve') + '</div>' +
+      (so ? '' : campo('Iniciativa', 'type="number" inputmode="numeric" data-f="iniciativa"', novo ? '' : j.iniciativa) +
+        campo('Percepção Passiva', 'type="number" inputmode="numeric" data-f="percepcao"', j.percepcao)) +
+      botao('g-salvar', novo ? 'Pôr' : 'Confirmar', novo ? '' : dataId(j.id)) + botao('g-cancelar', 'Cancelar', '', 'leve') + '</div>' +
       (erro ? '<p class="erro">' + esc(erro) + '</p>' : '');
   }
   function grupo(e, ui) {
@@ -16719,15 +16741,29 @@ table.tabela th { font-size: 13px; color: var(--suave); font-weight: 400; }
   document.addEventListener('focusout', function () {
     if (remotoPendente) setTimeout(function () { if (remotoPendente && !emCampoDeTexto(document.activeElement)) { remotoPendente = false; desenhar(); } }, 0);
   });
-  // Mudanças do jogador: aviso L18 com Desfazer, que vale até ele usar (decisão de 2026-11-25); ficam as 5 mais novas
-  // (acao: a entrada da pilha do Desfazer; o "Novo combate" zera a pilha e a mudança continua valendo)
-  var MESA_NA_FAIXA = 5;
+  // Mudanças do jogador: aviso L18 com Desfazer; ficam as 5 mais novas (acao: a entrada da pilha do Desfazer; o "Novo
+  // combate" zera a pilha e a mudança continua valendo).
+  // v0.3.1 (pedido do Francisco, 2026-11-25: "fica muito ruim" o aviso não sumir): o que vem da mesa sai da faixa em 10 s
+  // (menos os pedidos que esperam resposta); depois disso a mudança volta só pelo Desfazer do topo, na ordem da pilha.
+  // O aviso vencido sai no próximo desenho (desenhar), para os botões da faixa nunca apontarem para outro aviso;
+  // o Desfazer do topo que devolve o aviso (desfaz o Desfazer da faixa) dá a ele mais 10 s.
+  var MESA_NA_FAIXA = 5, MESA_SOME_MS = 10000;
+  function prazoDaMesa(it) {
+    var vez = it.vez = (it.vez || 0) + 1;
+    it.vencido = false;
+    setTimeout(function () {
+      if (it.vez !== vez || it.feito || ui.faixa.indexOf(it) < 0) return;
+      it.vencido = true;
+      desenharRemoto();
+    }, MESA_SOME_MS);
+  }
   function daMesa() {
     var l = ui.faixa.filter(function (it) { return it.mesa && !it.feito; });
     return l.slice(Math.max(0, l.length - MESA_NA_FAIXA));
   }
   function ultimaAcao() { return e.pilha[e.pilha.length - 1] || null; }
   function naFaixaDaMesa(itens) {
+    itens.forEach(function (it) { if (!V.pendente(it)) prazoDaMesa(it); });
     ui.faixa = ui.faixa.concat(itens);
     var vivos = ui.faixa.filter(function (it) { return it.mesa && !it.feito; });
     var velhos = vivos.slice(0, Math.max(0, vivos.length - MESA_NA_FAIXA));
@@ -16782,7 +16818,7 @@ table.tabela th { font-size: 13px; color: var(--suave); font-weight: 400; }
   }
   function desenhar() {
     var y = window.scrollY, det = document.querySelector('.detalhe-tablet'), yDet = det ? det.scrollTop : 0;
-    ui.faixa = ui.faixa.filter(function (it) { return !V.pendente(it) || pendentes().indexOf(it) >= 0; });
+    ui.faixa = ui.faixa.filter(function (it) { return (!V.pendente(it) || pendentes().indexOf(it) >= 0) && !(it.vencido && !it.feito); });
     S.gravarFaixa(pendentes().map(function (it) { return { a: it.a, n: it.n, modo: it.modo || null }; }));
     if (mesa) retratoDaMesa(mesa);   // H2: "fora do Grupo" e a etiqueta "na mesa" seguem o Grupo de agora
     raiz.innerHTML = V.html(e, ui);
@@ -16971,7 +17007,7 @@ table.tabela th { font-size: 13px; color: var(--suave); font-weight: 400; }
       if (!item) return;
       var txt = T.desfazer(e, item);
       // H2: desfeita a mudança do jogador, o aviso dela sai; desfeito o Desfazer da faixa, o aviso volta a ter o botão
-      ui.faixa.forEach(function (it) { if (it.mesa && it.feito && it.acaoDesfazer === item) { it.feito = null; it.acaoDesfazer = null; } });
+      ui.faixa.forEach(function (it) { if (it.mesa && it.feito && it.acaoDesfazer === item) { it.feito = null; it.acaoDesfazer = null; prazoDaMesa(it); } });
       E.desfazer(e);
       // o pedido que veio da ação desfeita sai junto (C4 D2); os de antes ficam
       ui.faixa = pendentes().filter(function (it) { return (it.n || 0) <= e.pilha.length; })
@@ -17122,15 +17158,15 @@ table.tabela th { font-size: 13px; color: var(--suave); font-weight: 400; }
     },
     'g-salvar': function (el) {
       var d = { nome: valor(el, 'nome'), nivel: valor(el, 'nivel'), ca: valor(el, 'ca'), pvMax: valor(el, 'pvMax'), iniciativa: valor(el, 'iniciativa'), percepcao: valor(el, 'percepcao') };
-      if (!d.nome) { ui.grupoErro = T.MSG.faltaNome; return; }
-      var id = el.dataset.id, r = null;
+      var id = el.dataset.id, r = null, j = id ? G.porId(e, id) : null;
+      if (id && !j) return;
+      // v0.3.1: da ficha ou da mesa, o Editar só tem CA, PV máximo e PV atual (G.dadosDoEditar); o nome fica o da ficha
+      if (!(j && G.soCaEPv(j)) && !d.nome) { ui.grupoErro = T.MSG.faltaNome; return; }
       if (!id) G.entrar(e, d);
       else {
-        var j = G.porId(e, id), pv = inteiroOuNulo(valor(el, 'pv'));
-        r = E.acao(e, { tipo: 'grupoAtualizar', id: id, nome: d.nome }, function () {
-          // linha, sentidos e idiomas vêm do arquivo da ficha (A10): ficam como estão ao editar
-          G.atualizar(e, id, { origem: j.origem, nome: d.nome, nivel: d.nivel, ca: d.ca, pvMax: d.pvMax, iniciativa: d.iniciativa, percepcao: d.percepcao,
-            salvaguardas: j.salvaguardas, defesas: j.defesas, linha: j.linha, sentidos: j.sentidos, idiomas: j.idiomas });
+        var pv = inteiroOuNulo(valor(el, 'pv')), dados = G.dadosDoEditar(j, d);
+        r = E.acao(e, { tipo: 'grupoAtualizar', id: id, nome: dados.nome }, function () {
+          G.atualizar(e, id, dados);
           if (pv !== null && j.pvMax !== null) j.pv = Math.max(0, Math.min(j.pvMax, pv));
           // com o combate aberto, a linha dele recebe o que mudou (C4; o Encerrar não desfaz mais a edição)
           return C.atualizarDoGrupo(e, id, pv === null || j.pvMax === null ? null : j.pv);
@@ -17262,6 +17298,8 @@ table.tabela th { font-size: 13px; color: var(--suave); font-weight: 400; }
     'f-sg-dig': function (el) { var it = ui.faixa[+el.dataset.i]; it.dig = true; it.erro = ''; },
     'f-sg-cancelar': function (el) { var it = ui.faixa[+el.dataset.i]; it.dig = false; it.erro = ''; },
     'f-ignorar': function (el) { ui.faixa.splice(+el.dataset.i, 1); },
+    // v0.3.2: × do aviso; o da mesa sai como nos 10 s (a mudança fica; volta só pelo Desfazer do topo)
+    'f-fechar': function (el) { var it = ui.faixa[+el.dataset.i]; if (it && !V.pendente(it)) ui.faixa.splice(+el.dataset.i, 1); },
     'f-sg-por': function (el) {
       var i = +el.dataset.i, x = alvoDoAviso(ui.faixa[i].a), r = C.digitarSalvaguarda(e, x.id, x.atributo, valor(el, 'd20'), V.modoDoAviso(e, ui.faixa[i]));
       if (!r) { ui.faixa[i].erro = T.erroD20; return; }
